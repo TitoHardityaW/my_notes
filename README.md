@@ -1,1 +1,91 @@
-# my_notes
+# My Notes 📝
+
+Aplikasi catatan berbasis web yang menggunakan **Google Spreadsheet sebagai database** dan bisa di-hosting gratis di **GitHub Pages**.
+
+- Frontend: HTML + CSS + JavaScript murni (tanpa build step)
+- Backend: Google Apps Script (Web App) yang membaca/menulis ke Spreadsheet
+- Fitur: tambah/edit/hapus catatan, pencarian, tag, warna, sematkan (pin), mode gelap, dilindungi password
+
+## Struktur
+
+```
+index.html          Halaman utama
+style.css           Tampilan
+app.js              Logika aplikasi
+config.js           URL API (diisi sendiri)
+apps-script/Code.gs Kode backend untuk Google Apps Script
+```
+
+## 1. Siapkan Google Spreadsheet + Apps Script
+
+1. Buat Spreadsheet baru di [Google Sheets](https://sheets.new), beri nama mis. `My Notes DB`.
+2. Buka menu **Extensions → Apps Script**.
+3. Hapus isi `Code.gs` bawaan, lalu salin seluruh isi file [`apps-script/Code.gs`](apps-script/Code.gs) ke sana. Simpan.
+4. Atur password aplikasi: klik **Project Settings** (ikon ⚙️) → **Script Properties** → **Add script property**
+   - Property: `APP_PASSWORD`
+   - Value: password pilihan Anda
+5. Kembali ke editor, pilih fungsi `setup` lalu klik **Run**. Izinkan akses ketika diminta
+   (klik *Advanced → Go to ... (unsafe)* jika muncul peringatan — ini script milik Anda sendiri).
+   Sheet `Notes` dengan header akan dibuat otomatis.
+6. Klik **Deploy → New deployment**:
+   - Select type: **Web app**
+   - Execute as: **Me**
+   - Who has access: **Anyone**
+7. Klik **Deploy**, lalu salin **Web app URL** (berakhiran `/exec`).
+
+## 2. Hubungkan frontend
+
+Buka `config.js` dan isi URL tadi:
+
+```js
+window.APP_CONFIG = {
+  API_URL: 'https://script.google.com/macros/s/XXXXXXXX/exec',
+};
+```
+
+Untuk mencoba secara lokal, buka lewat XAMPP: `http://localhost/my_notes/`.
+
+## 3. Publish ke GitHub Pages
+
+1. Commit dan push ke GitHub:
+   ```bash
+   git add .
+   git commit -m "Aplikasi catatan"
+   git push origin main
+   ```
+2. Di repository GitHub: **Settings → Pages**
+   - Source: **Deploy from a branch**
+   - Branch: `main`, folder `/ (root)` → **Save**
+3. Tunggu 1–2 menit, aplikasi tersedia di `https://<username>.github.io/<nama-repo>/`.
+
+## Memperbarui kode Apps Script
+
+Setelah mengubah `Code.gs`, buka **Deploy → Manage deployments → ✏️ Edit → Version: New version → Deploy**.
+Dengan cara ini URL Web App tetap sama, sehingga `config.js` tidak perlu diubah.
+
+## Enkripsi catatan (untuk akun & password)
+
+Centang **🔒 Enkripsi** di editor untuk mengenkripsi judul dan isi catatan **di browser** sebelum dikirim.
+Di Spreadsheet yang tersimpan hanya teks acak seperti `enc:v1:KLk0Zbs93Ukk...`.
+
+- Pertama kali dipakai, aplikasi meminta Anda membuat **master password** (minimal 10 karakter).
+  Gunakan password yang **berbeda** dari password login.
+- Master password **tidak pernah dikirim ke server**. Kunci enkripsi diturunkan di browser
+  (PBKDF2-SHA256, 600.000 iterasi → AES-256-GCM) dan hanya disimpan di memori.
+- Server hanya menyimpan salt dan nilai pengecek di Script Property `VAULT`, yang tidak bisa dipakai untuk membuka catatan.
+- Catatan terenkripsi otomatis terkunci lagi setelah **10 menit tanpa aktivitas**, saat halaman di-reload,
+  atau saat ikon gembok di kanan atas diklik.
+- ⚠️ **Jika master password lupa, catatan terenkripsi tidak bisa dipulihkan.** Untuk memulai ulang,
+  hapus Script Property `VAULT` dan baris catatan terenkripsi di Spreadsheet.
+- Catatan terenkripsi tidak bisa dicari selama masih terkunci. Tag dan warna tidak dienkripsi,
+  jadi jangan tulis informasi rahasia di tag.
+
+## Catatan keamanan
+
+- URL API di `config.js` akan terlihat publik, tetapi setiap request wajib menyertakan password yang
+  dicek di server (`APP_PASSWORD`), jadi orang lain tidak bisa membaca/mengubah catatan tanpa password.
+- Jika "Ingat saya" dicentang, password disimpan di `localStorage` browser. Jangan centang di perangkat bersama.
+- Gunakan password yang kuat. Untuk mengganti password, cukup ubah nilai `APP_PASSWORD` di Script Properties.
+- Catatan **tanpa** enkripsi tersimpan sebagai teks biasa dan bisa dibaca siapa pun yang punya akses ke Spreadsheet.
+- Enkripsi melindungi data di Spreadsheet, tetapi tidak dari perangkat yang sudah terinfeksi malware
+  atau ekstensi browser yang berbahaya. Untuk kebutuhan keamanan tinggi, gunakan password manager khusus.

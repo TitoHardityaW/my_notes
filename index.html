@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My Notes</title>
+  <meta name="description" content="Aplikasi catatan sederhana dengan Google Spreadsheet sebagai database.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src https://script.google.com https://script.googleusercontent.com; base-uri 'none'">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📝</text></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Login -->
+  <main id="login-view" class="login" hidden>
+    <form id="login-form" class="login-card">
+      <div class="brand brand-lg"><span class="brand-icon">📝</span> My Notes</div>
+      <p class="muted">Masukkan password untuk membuka catatan Anda.</p>
+      <div id="config-warning" class="alert" hidden>
+        <strong>API belum dikonfigurasi.</strong> Isi <code>API_URL</code> di <code>config.js</code>
+        dengan URL Web App Google Apps Script. Lihat README.
+      </div>
+      <label class="field">
+        <span>Password</span>
+        <input id="login-password" type="password" autocomplete="current-password" required>
+      </label>
+      <label class="check">
+        <input id="login-remember" type="checkbox" checked> Ingat saya di perangkat ini
+      </label>
+      <p id="login-error" class="error" hidden></p>
+      <button id="login-btn" type="submit" class="btn btn-primary btn-block">Masuk</button>
+    </form>
+  </main>
+
+  <!-- App -->
+  <div id="app-view" hidden>
+    <header class="topbar">
+      <div class="brand"><span class="brand-icon">📝</span> <span class="brand-text">My Notes</span></div>
+      <div class="search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4a6 6 0 1 0 3.9 10.6l4.8 4.8 1.4-1.4-4.8-4.8A6 6 0 0 0 10 4Zm0 2a4 4 0 1 1 0 8 4 4 0 0 1 0-8Z"/></svg>
+        <input id="search" type="search" placeholder="Cari catatan…  ( / )" aria-label="Cari catatan">
+      </div>
+      <div class="topbar-actions">
+        <button id="lock-btn" class="icon-btn" title="Buka catatan terenkripsi" aria-label="Buka catatan terenkripsi"></button>
+        <button id="refresh-btn" class="icon-btn" title="Muat ulang" aria-label="Muat ulang">
+          <svg viewBox="0 0 24 24"><path d="M12 5V2L8 6l4 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7Z"/></svg>
+        </button>
+        <button id="theme-btn" class="icon-btn" title="Ganti tema" aria-label="Ganti tema">
+          <svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9Z"/></svg>
+        </button>
+        <button id="logout-btn" class="icon-btn" title="Keluar" aria-label="Keluar">
+          <svg viewBox="0 0 24 24"><path d="M10 17l1.4-1.4L8.8 13H20v-2H8.8l2.6-2.6L10 7l-5 5 5 5ZM4 5h7V3H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7v-2H4V5Z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="container">
+      <div class="toolbar">
+        <div id="tags" class="tags" role="tablist" aria-label="Filter tag"></div>
+        <button id="new-btn" class="btn btn-primary">+ Catatan baru</button>
+      </div>
+
+      <div id="loading" class="state" hidden><span class="spinner"></span> Memuat catatan…</div>
+      <div id="empty" class="state" hidden></div>
+      <section id="notes"></section>
+    </div>
+  </div>
+
+  <!-- Editor -->
+  <dialog id="editor" class="editor">
+    <form id="editor-form" method="dialog">
+      <input id="note-title" class="editor-title" type="text" placeholder="Judul" maxlength="200" autocomplete="off">
+      <textarea id="note-content" class="editor-content" placeholder="Tulis catatan…" maxlength="49000"></textarea>
+      <div class="editor-meta">
+        <label class="field field-inline">
+          <span>Tag</span>
+          <input id="note-tag" type="text" list="tag-list" maxlength="40" placeholder="mis. kerja" autocomplete="off">
+          <datalist id="tag-list"></datalist>
+        </label>
+        <div class="colors" role="radiogroup" aria-label="Warna catatan" id="note-colors"></div>
+        <label class="check">
+          <input id="note-pinned" type="checkbox"> Sematkan
+        </label>
+        <label class="check" title="Judul & isi dienkripsi di browser dengan master password">
+          <input id="note-encrypted" type="checkbox"> 🔒 Enkripsi
+        </label>
+      </div>
+      <p id="editor-info" class="muted small"></p>
+      <div class="editor-actions">
+        <button id="delete-btn" type="button" class="btn btn-danger">Hapus</button>
+        <span class="spacer"></span>
+        <button id="cancel-btn" type="button" class="btn">Batal</button>
+        <button id="save-btn" type="submit" class="btn btn-primary">Simpan</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Master password -->
+  <dialog id="vault" class="vault">
+    <form id="vault-form" method="dialog">
+      <h2 id="vault-title">Buka catatan terenkripsi</h2>
+      <p id="vault-desc" class="muted small"></p>
+      <div id="vault-warning" class="alert small" hidden>
+        <strong>Penting:</strong> master password tidak disimpan di mana pun dan
+        <strong>tidak bisa dipulihkan</strong>. Jika lupa, semua catatan terenkripsi hilang permanen.
+        Gunakan password yang berbeda dari password login.
+      </div>
+      <label class="field">
+        <span>Master password</span>
+        <input id="vault-password" type="password" autocomplete="off" required>
+      </label>
+      <label id="vault-confirm-field" class="field" hidden>
+        <span>Ulangi master password</span>
+        <input id="vault-confirm" type="password" autocomplete="off">
+      </label>
+      <p id="vault-error" class="error" hidden></p>
+      <div class="editor-actions">
+        <span class="spacer"></span>
+        <button id="vault-cancel" type="button" class="btn">Batal</button>
+        <button id="vault-submit" type="submit" class="btn btn-primary">Buka</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
