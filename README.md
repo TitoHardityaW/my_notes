@@ -13,6 +13,7 @@ index.html          Halaman utama
 style.css           Tampilan
 app.js              Logika aplikasi
 config.js           URL API (diisi sendiri)
+manifest.webmanifest, sw.js, icons/   File PWA
 apps-script/Code.gs Kode backend untuk Google Apps Script
 ```
 
@@ -57,6 +58,21 @@ Untuk mencoba secara lokal, buka lewat XAMPP: `http://localhost/my_notes/`.
    - Source: **Deploy from a branch**
    - Branch: `main`, folder `/ (root)` → **Save**
 3. Tunggu 1–2 menit, aplikasi tersedia di `https://<username>.github.io/<nama-repo>/`.
+
+## Install sebagai aplikasi (PWA)
+
+My Notes adalah Progressive Web App, jadi bisa dipasang seperti aplikasi biasa:
+
+- **Android / Chrome / Edge (desktop)**: klik ikon ⬇️ *Install* di pojok kanan atas aplikasi,
+  atau menu browser → *Install app* / *Tambahkan ke layar utama*.
+- **iPhone / iPad (Safari)**: tombol *Share* → *Add to Home Screen*.
+
+Tampilan aplikasi di-cache oleh service worker ([`sw.js`](sw.js)), jadi tetap terbuka cepat walaupun jaringan lambat.
+Data catatan **sengaja tidak di-cache**, supaya isinya tidak tertinggal di perangkat. Karena itu memuat dan menyimpan catatan tetap butuh internet.
+
+Service worker memakai strategi *network-first*: saat online, versi terbaru selalu diambil dari GitHub Pages.
+Jika menambah file baru yang perlu tersedia offline, tambahkan ke daftar `ASSETS` di `sw.js`
+lalu naikkan versi `CACHE` (mis. `my-notes-v2`).
 
 ## Memperbarui kode Apps Script
 

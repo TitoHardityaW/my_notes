@@ -159,8 +159,16 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
   align-items: center;
   gap: 16px;
   padding: 10px 24px;
+  padding-top: max(10px, env(safe-area-inset-top));
   background: var(--surface);
   border-bottom: 1px solid var(--border);
+}
+.offline-bar {
+  background: color-mix(in srgb, #f59e0b 18%, var(--surface));
+  border-bottom: 1px solid color-mix(in srgb, #f59e0b 40%, transparent);
+  text-align: center;
+  font-size: 13px;
+  padding: 6px 16px;
 }
 .search {
   flex: 1;
@@ -180,7 +188,7 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
 .search input:focus { border-color: var(--primary); background: var(--surface); }
 .topbar-actions { display: flex; gap: 2px; }
 
-.container { max-width: 1200px; margin: 0 auto; padding: 20px 24px 60px; }
+.container { max-width: 1200px; margin: 0 auto; padding: 20px 24px max(60px, env(safe-area-inset-bottom)); }
 
 .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
 .tags { display: flex; gap: 8px; overflow-x: auto; flex: 1; scrollbar-width: thin; padding-bottom: 2px; }
@@ -328,7 +336,7 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
 .toast.error { background: var(--danger); color: #fff; }
 
 @media (max-width: 640px) {
-  .topbar { padding: 10px 16px; gap: 8px; }
+  .topbar { padding: 10px 16px; padding-top: max(10px, env(safe-area-inset-top)); gap: 8px; }
   .brand-text { display: none; }
   .container { padding: 16px 16px 60px; }
   .toolbar { flex-direction: column-reverse; align-items: stretch; }

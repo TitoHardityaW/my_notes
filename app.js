@@ -87,7 +87,9 @@
         body: JSON.stringify({ action, password: state.password, ...payload }),
       });
     } catch {
-      throw new Error('Tidak dapat terhubung ke server. Periksa koneksi & API_URL.');
+      throw new Error(navigator.onLine
+        ? 'Tidak dapat terhubung ke server. Periksa koneksi & API_URL.'
+        : 'Anda sedang offline. Sambungkan internet lalu coba lagi.');
     }
     if (!res.ok) throw new Error(`Server error (HTTP ${res.status}).`);
 
@@ -704,10 +706,45 @@
       document.addEventListener(type, resetAutoLock, { passive: true }));
   }
 
+  // ---------- PWA ----------
+  function setupPwa() {
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => { /* tetap jalan tanpa SW */ });
+      });
+    }
+
+    const installBtn = $('#install-btn');
+    let installPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      installPrompt = e;
+      installBtn.hidden = false;
+    });
+    installBtn.addEventListener('click', async () => {
+      if (!installPrompt) return;
+      installPrompt.prompt();
+      await installPrompt.userChoice;
+      installPrompt = null;
+      installBtn.hidden = true;
+    });
+    window.addEventListener('appinstalled', () => {
+      installBtn.hidden = true;
+      toast('Aplikasi terpasang');
+    });
+
+    const offlineBar = $('#offline-bar');
+    const updateOnline = () => { offlineBar.hidden = navigator.onLine; };
+    window.addEventListener('online', updateOnline);
+    window.addEventListener('offline', updateOnline);
+    updateOnline();
+  }
+
   // ---------- Init ----------
   async function init() {
     applyTheme(store.get(THEME_KEY));
     bindEvents();
+    setupPwa();
 
     if (!API_URL) {
       els.configWarning.hidden = false;

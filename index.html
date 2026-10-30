@@ -2,11 +2,20 @@
 <html lang="id">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>My Notes</title>
   <meta name="description" content="Aplikasi catatan sederhana dengan Google Spreadsheet sebagai database.">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src https://script.google.com https://script.googleusercontent.com; base-uri 'none'">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📝</text></svg>">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="icons/icon-192.png" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1a1d23" media="(prefers-color-scheme: dark)">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="My Notes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -40,6 +49,9 @@
         <input id="search" type="search" placeholder="Cari catatan…  ( / )" aria-label="Cari catatan">
       </div>
       <div class="topbar-actions">
+        <button id="install-btn" class="icon-btn" title="Install aplikasi" aria-label="Install aplikasi" hidden>
+          <svg viewBox="0 0 24 24"><path d="M11 3h2v9.2l3.3-3.3 1.4 1.4L12 16l-5.7-5.7 1.4-1.4 3.3 3.3V3ZM4 18h16v2H4v-2Z"/></svg>
+        </button>
         <button id="lock-btn" class="icon-btn" title="Buka catatan terenkripsi" aria-label="Buka catatan terenkripsi"></button>
         <button id="refresh-btn" class="icon-btn" title="Muat ulang" aria-label="Muat ulang">
           <svg viewBox="0 0 24 24"><path d="M12 5V2L8 6l4 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7Z"/></svg>
@@ -52,6 +64,8 @@
         </button>
       </div>
     </header>
+
+    <div id="offline-bar" class="offline-bar" hidden>Anda sedang offline. Catatan tidak bisa dimuat atau disimpan.</div>
 
     <div class="container">
       <div class="toolbar">
