@@ -79,6 +79,21 @@ lalu naikkan versi `CACHE` (mis. `my-notes-v2`).
 Setelah mengubah `Code.gs`, buka **Deploy → Manage deployments → ✏️ Edit → Version: New version → Deploy**.
 Dengan cara ini URL Web App tetap sama, sehingga `config.js` tidak perlu diubah.
 
+## Struktur data & penghapusan
+
+Sheet `Notes` berisi kolom: `id, title, content, tag, color, pinned, createdAt, updatedAt, deleted`.
+
+Menghapus catatan **tidak menghapus baris** di Spreadsheet (*soft delete*). Yang berubah hanya kolom `deleted`:
+
+| `deleted` | Arti |
+|-----------|------|
+| `0` | Aktif, tampil di aplikasi |
+| `1` | Dihapus, disembunyikan dari aplikasi |
+
+- Saat dihapus, `updatedAt` diisi waktu penghapusan.
+- **Memulihkan catatan:** ubah `deleted` dari `1` menjadi `0` langsung di Spreadsheet, lalu klik muat ulang di aplikasi.
+- Sheet lama tanpa kolom `deleted` otomatis mendapat kolom tersebut. Sel yang kosong dianggap `0` (aktif).
+
 ## Enkripsi catatan (untuk akun & password)
 
 Centang **🔒 Enkripsi** di editor untuk mengenkripsi judul dan isi catatan **di browser** sebelum dikirim.
@@ -100,7 +115,11 @@ Di Spreadsheet yang tersimpan hanya teks acak seperti `enc:v1:KLk0Zbs93Ukk...`.
 
 - URL API di `config.js` akan terlihat publik, tetapi setiap request wajib menyertakan password yang
   dicek di server (`APP_PASSWORD`), jadi orang lain tidak bisa membaca/mengubah catatan tanpa password.
-- Jika "Ingat saya" dicentang, password disimpan di `localStorage` browser. Jangan centang di perangkat bersama.
+- **Password login tidak disimpan di perangkat.** Password hanya dikirim sekali saat login, lalu server memberi
+  *session token* acak yang disimpan di memori browser saja. Setiap kali aplikasi dibuka atau di-reload, password harus dimasukkan lagi.
+- **Logout otomatis** setelah 15 menit tanpa aktivitas, dengan peringatan 1 menit sebelumnya.
+  Di server, token juga hangus setelah 30 menit tanpa request, atau maksimal 12 jam sejak login.
+  Nilai ini bisa diubah lewat `SESSION_IDLE_MS` (di `app.js`) serta `SESSION_IDLE_SEC` dan `SESSION_MAX_MS` (di `Code.gs`).
 - Gunakan password yang kuat. Untuk mengganti password, cukup ubah nilai `APP_PASSWORD` di Script Properties.
 - Catatan **tanpa** enkripsi tersimpan sebagai teks biasa dan bisa dibaca siapa pun yang punya akses ke Spreadsheet.
 - Enkripsi melindungi data di Spreadsheet, tetapi tidak dari perangkat yang sudah terinfeksi malware

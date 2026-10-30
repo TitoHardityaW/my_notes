@@ -6,11 +6,17 @@
  */
 
 const SHEET_NAME = 'Notes';
-const HEADERS = ['id', 'title', 'content', 'tag', 'color', 'pinned', 'createdAt', 'updatedAt'];
+// deleted: 0 = aktif, 1 = dihapus (soft delete; baris tidak pernah dihapus dari sheet).
+const HEADERS = ['id', 'title', 'content', 'tag', 'color', 'pinned', 'createdAt', 'updatedAt', 'deleted'];
 const COLORS = ['default', 'yellow', 'green', 'blue', 'pink', 'purple'];
 const MAX_TITLE = 200;
 const MAX_TAG = 40;
 const MAX_CONTENT = 49000; // batas sel Google Sheets 50.000 karakter
+
+// Session: token acak disimpan di CacheService dan kedaluwarsa otomatis.
+const SESSION_PREFIX = 'session_';
+const SESSION_IDLE_SEC = 30 * 60; // hangus jika 30 menit tanpa request
+const SESSION_MAX_MS = 12 * 60 * 60 * 1000; // umur maksimum session
 
 function doGet() {
   return json_({ ok: true, message: 'My Notes API berjalan. Gunakan POST.' });
@@ -24,12 +30,13 @@ function doPost(e) {
     return json_({ ok: false, error: 'Format request tidak valid.' });
   }
 
-  const password = PropertiesService.getScriptProperties().getProperty('APP_PASSWORD');
-  if (!password) {
-    return json_({ ok: false, error: 'APP_PASSWORD belum diatur di Script Properties.' });
+  if (body.action === 'login') return json_(login_(body.password));
+  if (body.action === 'logout') {
+    endSession_(body.token);
+    return json_({ ok: true });
   }
-  if (body.password !== password) {
-    return json_({ ok: false, code: 'UNAUTHORIZED', error: 'Password salah.' });
+  if (!checkSession_(body.token)) {
+    return json_({ ok: false, code: 'UNAUTHORIZED', error: 'Sesi berakhir. Silakan masuk lagi.' });
   }
 
   const lock = LockService.getScriptLock();
@@ -57,6 +64,37 @@ function doPost(e) {
   }
 }
 
+function login_(password) {
+  const expected = PropertiesService.getScriptProperties().getProperty('APP_PASSWORD');
+  if (!expected) return { ok: false, error: 'APP_PASSWORD belum diatur di Script Properties.' };
+  if (typeof password !== 'string' || password !== expected) {
+    Utilities.sleep(1000); // memperlambat percobaan menebak password
+    return { ok: false, error: 'Password salah.' };
+  }
+  const token = Utilities.getUuid() + Utilities.getUuid();
+  CacheService.getScriptCache().put(SESSION_PREFIX + token, String(Date.now()), SESSION_IDLE_SEC);
+  return { ok: true, token: token };
+}
+
+/** Memvalidasi token dan memperpanjang masa berlakunya (sliding expiration). */
+function checkSession_(token) {
+  if (typeof token !== 'string' || !token) return false;
+  const cache = CacheService.getScriptCache();
+  const key = SESSION_PREFIX + token;
+  const created = cache.get(key);
+  if (!created) return false;
+  if (Date.now() - Number(created) > SESSION_MAX_MS) {
+    cache.remove(key);
+    return false;
+  }
+  cache.put(key, created, SESSION_IDLE_SEC);
+  return true;
+}
+
+function endSession_(token) {
+  if (typeof token === 'string' && token) CacheService.getScriptCache().remove(SESSION_PREFIX + token);
+}
+
 /** Jalankan sekali dari editor untuk membuat sheet & memberi izin akses. */
 function setup() {
   getSheet_();
@@ -70,7 +108,8 @@ function listNotes_() {
     .getRange(2, 1, lastRow - 1, HEADERS.length)
     .getValues()
     .filter(row => row[0])
-    .map(rowToNote_);
+    .map(rowToNote_)
+    .filter(note => !note.deleted);
 }
 
 function createNote_(input) {
@@ -78,6 +117,7 @@ function createNote_(input) {
   const note = Object.assign({ id: Utilities.getUuid() }, sanitize_(input), {
     createdAt: now,
     updatedAt: now,
+    deleted: false,
   });
   getSheet_().appendRow(noteToRow_(note));
   return note;
@@ -91,6 +131,7 @@ function updateNote_(input) {
 
   const range = sheet.getRange(row, 1, 1, HEADERS.length);
   const existing = rowToNote_(range.getValues()[0]);
+  if (existing.deleted) throw new Error('Catatan tidak ditemukan.');
   const note = Object.assign({}, existing, sanitize_(input), {
     id: existing.id,
     createdAt: existing.createdAt,
@@ -105,7 +146,14 @@ function deleteNote_(id) {
   const sheet = getSheet_();
   const row = findRow_(sheet, id);
   if (!row) throw new Error('Catatan tidak ditemukan.');
-  sheet.deleteRow(row);
+
+  // Soft delete: hanya ubah status, data tetap ada di spreadsheet.
+  const range = sheet.getRange(row, 1, 1, HEADERS.length);
+  const note = rowToNote_(range.getValues()[0]);
+  if (note.deleted) throw new Error('Catatan tidak ditemukan.');
+  note.deleted = true;
+  note.updatedAt = new Date().toISOString();
+  range.setValues([noteToRow_(note)]);
 }
 
 /**
@@ -141,6 +189,9 @@ function getSheet_() {
     sheet.appendRow(HEADERS);
     sheet.setFrozenRows(1);
     sheet.getRange(1, 1, 1, HEADERS.length).setFontWeight('bold');
+  } else if (sheet.getLastColumn() < HEADERS.length) {
+    // Migrasi sheet lama: tambahkan kolom header baru. Sel kosong dianggap 0 (aktif).
+    sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]).setFontWeight('bold');
   }
   return sheet;
 }
@@ -177,7 +228,9 @@ function rowToNote_(row) {
   HEADERS.forEach((key, i) => {
     let value = row[i];
     if (value instanceof Date) value = value.toISOString();
-    note[key] = key === 'pinned' ? value === true || value === 'TRUE' : String(value);
+    if (key === 'pinned') note[key] = value === true || value === 'TRUE';
+    else if (key === 'deleted') note[key] = Number(value) === 1;
+    else note[key] = String(value);
   });
   return note;
 }
@@ -185,7 +238,11 @@ function rowToNote_(row) {
 function noteToRow_(note) {
   // Awalan apostrof membuat Sheets menyimpan nilai sebagai teks biasa,
   // sehingga isi seperti "=SUM(...)" tidak dieksekusi sebagai formula.
-  return HEADERS.map(key => (key === 'pinned' ? note.pinned === true : "'" + String(note[key] == null ? '' : note[key])));
+  return HEADERS.map(key => {
+    if (key === 'pinned') return note.pinned === true;
+    if (key === 'deleted') return note.deleted ? 1 : 0;
+    return "'" + String(note[key] == null ? '' : note[key]);
+  });
 }
 
 function json_(data) {

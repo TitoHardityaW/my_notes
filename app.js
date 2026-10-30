@@ -2,8 +2,10 @@
   'use strict';
 
   const API_URL = ((window.APP_CONFIG && window.APP_CONFIG.API_URL) || '').trim();
-  const PASSWORD_KEY = 'mynotes.password';
+  const LEGACY_PASSWORD_KEY = 'mynotes.password'; // dulu dipakai "Ingat saya", kini dihapus
   const THEME_KEY = 'mynotes.theme';
+  const SESSION_IDLE_MS = 15 * 60 * 1000;
+  const SESSION_WARN_MS = 60 * 1000;
   const COLORS = ['default', 'yellow', 'green', 'blue', 'pink', 'purple'];
   const MAX_CONTENT = 49000;
 
@@ -22,7 +24,6 @@
     loginView: $('#login-view'),
     loginForm: $('#login-form'),
     loginPassword: $('#login-password'),
-    loginRemember: $('#login-remember'),
     loginError: $('#login-error'),
     loginBtn: $('#login-btn'),
     configWarning: $('#config-warning'),
@@ -59,7 +60,7 @@
   };
 
   const state = {
-    password: null,
+    token: null, // session token, hanya di memori (hilang saat reload)
     notes: [],
     query: '',
     tag: '',
@@ -84,7 +85,7 @@
       res = await fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action, password: state.password, ...payload }),
+        body: JSON.stringify({ action, token: state.token, ...payload }),
       });
     } catch {
       throw new Error(navigator.onLine
@@ -218,8 +219,7 @@
 
   function handleError(err) {
     if (err.code === 'UNAUTHORIZED') {
-      logout();
-      showLoginError('Sesi tidak valid. Silakan masuk lagi.');
+      logout('Sesi berakhir. Silakan masuk lagi.');
       return;
     }
     toast(err.message, true);
@@ -258,39 +258,84 @@
     showLoginError('');
   }
 
-  async function login(password, remember) {
-    state.password = password;
+  async function login(password) {
     els.loginBtn.disabled = true;
     els.loginBtn.textContent = 'Memeriksa…';
+    showLoginError('');
     try {
+      const session = await api('login', { password });
+      state.token = session.token;
       const data = await api('list');
       state.vault = data.vault;
       await setNotes(data.notes);
-      if (remember) store.set(PASSWORD_KEY, password);
+      startSession();
       showApp();
       render();
-      return true;
     } catch (err) {
-      state.password = null;
-      store.remove(PASSWORD_KEY);
-      showLogin();
+      state.token = null;
       showLoginError(err.message);
-      return false;
+      els.loginPassword.focus();
     } finally {
+      els.loginPassword.value = '';
       els.loginBtn.disabled = false;
       els.loginBtn.textContent = 'Masuk';
     }
   }
 
-  function logout() {
+  function logout(reason = '') {
+    if (state.token) api('logout').catch(() => { /* token tetap hangus sendiri di server */ });
     lockVault(true);
-    state.password = null;
+    stopSession();
+    state.token = null;
     state.notes = [];
     state.vault = null;
-    store.remove(PASSWORD_KEY);
+    state.query = '';
+    state.tag = '';
+    els.search.value = '';
+    els.notes.innerHTML = '';
     if (els.editor.open) els.editor.close();
-    if (els.vault.open) els.vault.close();
+    if (els.vault.open) finishVault(false);
     showLogin();
+    showLoginError(reason);
+  }
+
+  // ---------- Session (logout otomatis saat tidak ada aktivitas) ----------
+  let lastActivity = 0;
+  let sessionTimer = null;
+  let sessionWarned = false;
+
+  function startSession() {
+    lastActivity = Date.now();
+    sessionWarned = false;
+    clearInterval(sessionTimer);
+    sessionTimer = setInterval(checkIdle, 10000);
+  }
+
+  function stopSession() {
+    clearInterval(sessionTimer);
+    sessionTimer = null;
+  }
+
+  function touchSession() {
+    if (!state.token) return;
+    lastActivity = Date.now();
+    sessionWarned = false;
+  }
+
+  // Dicek berdasarkan waktu (bukan setTimeout) agar tetap akurat
+  // walau tab/PWA sempat berjalan di background.
+  function checkIdle() {
+    if (!state.token) return;
+    const idle = Date.now() - lastActivity;
+    if (idle >= SESSION_IDLE_MS) {
+      logout('Anda keluar otomatis karena tidak ada aktivitas.');
+      return;
+    }
+    if (state.key && idle >= AUTO_LOCK_MS) lockVault();
+    if (!sessionWarned && idle >= SESSION_IDLE_MS - SESSION_WARN_MS) {
+      sessionWarned = true;
+      toast('Sesi akan berakhir dalam 1 menit jika tidak ada aktivitas.');
+    }
   }
 
   async function refresh() {
@@ -312,7 +357,6 @@
 
   // ---------- Vault (master password) ----------
   let vaultResolve = null;
-  let autoLockTimer = null;
 
   function showVaultError(msg) {
     els.vaultError.textContent = msg;
@@ -380,7 +424,7 @@
 
       state.key = key;
       await Promise.all(state.notes.filter((n) => n.encrypted).map(decryptNote));
-      resetAutoLock();
+      touchSession();
       render();
       finishVault(true);
       toast(setup ? 'Master password dibuat' : 'Catatan terenkripsi dibuka');
@@ -400,7 +444,6 @@
   function lockVault(silent = false) {
     if (!state.key) return;
     state.key = null;
-    clearTimeout(autoLockTimer);
     state.notes.forEach((n) => {
       if (n.encrypted) Object.assign(n, { title: '', content: '', locked: true });
     });
@@ -408,12 +451,6 @@
     if (els.editor.open && (els.encrypted.checked || (editing && editing.encrypted))) els.editor.close();
     render();
     if (!silent) toast('Catatan terenkripsi dikunci');
-  }
-
-  function resetAutoLock() {
-    if (!state.key) return;
-    clearTimeout(autoLockTimer);
-    autoLockTimer = setTimeout(() => lockVault(), AUTO_LOCK_MS);
   }
 
   function renderLockBtn() {
@@ -612,10 +649,10 @@
     els.loginForm.addEventListener('submit', (e) => {
       e.preventDefault();
       const pwd = els.loginPassword.value;
-      if (pwd) login(pwd, els.loginRemember.checked);
+      if (pwd) login(pwd);
     });
 
-    $('#logout-btn').addEventListener('click', logout);
+    $('#logout-btn').addEventListener('click', () => logout());
     $('#refresh-btn').addEventListener('click', refresh);
     $('#theme-btn').addEventListener('click', toggleTheme);
     $('#new-btn').addEventListener('click', () => openEditor(null));
@@ -701,9 +738,13 @@
       }
     });
 
-    // Aktivitas pengguna menunda kunci otomatis.
-    ['pointerdown', 'keydown', 'input'].forEach((type) =>
-      document.addEventListener(type, resetAutoLock, { passive: true }));
+    // Aktivitas pengguna menunda logout & kunci otomatis.
+    ['pointerdown', 'keydown', 'input', 'scroll'].forEach((type) =>
+      document.addEventListener(type, touchSession, { passive: true, capture: true }));
+    // Saat kembali ke tab/aplikasi, langsung cek apakah sesi sudah lewat batas.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') checkIdle();
+    });
   }
 
   // ---------- PWA ----------
@@ -753,15 +794,8 @@
       return;
     }
 
-    const saved = store.get(PASSWORD_KEY);
-    if (saved) {
-      els.appView.hidden = false;
-      els.loading.hidden = false;
-      await login(saved, true);
-      els.loading.hidden = true;
-    } else {
-      showLogin();
-    }
+    store.remove(LEGACY_PASSWORD_KEY);
+    showLogin();
   }
 
   init();
